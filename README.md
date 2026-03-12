@@ -16,6 +16,36 @@ A browser-based pixel art editor built with Next.js and React. Features layers, 
 - **Keyboard Shortcuts** — Comprehensive shortcut support for all tools and actions
 - **Zero Dependencies** — All drawing algorithms, GIF encoding (LZW), and image processing implemented from scratch
 
+## What Makes This Editor Different
+
+### Built-from-scratch GIF encoder
+
+The editor includes a complete GIF89a encoder written from scratch in TypeScript — no libraries, no WebAssembly, no server round-trips. It implements LZW compression, builds global color tables from the actual pixels in your frames, supports transparency, configurable frame delay derived from the FPS setting, and the Netscape looping extension. The entire encode runs synchronously in the browser and produces a blob URL you can download immediately.
+
+### Per-frame undo/redo history
+
+Unlike most editors that maintain a single global history, each animation frame has its own independent undo/redo stack (up to 40 states each). Switching between frames preserves their individual histories, so undoing on frame 3 doesn't affect your work on frame 1. The history also supports jump-to-start and jump-to-end for quickly comparing the original state against the current one.
+
+### Color-tinted onion skinning
+
+The onion skin system shows previous frames tinted red and next frames tinted blue, with configurable count (1–3 frames in each direction) and opacity. The tinting is applied per-pixel on the canvas — only pixels that actually contain data get the color overlay, keeping transparent areas clean.
+
+### Procedural Manas sprite
+
+The default canvas ships with a 64x64 pixel art warrior generated entirely in code — the Manas sprite, inspired by the Kyrgyz epic hero. Every pixel is placed procedurally using helper functions (`hLine`, `vLine`, `rect`) with a named palette covering skin, armor, chainmail, kalpak, sword, and leather. It serves as both a demo and a functional color palette reference.
+
+### Native drawing algorithms
+
+All drawing tools are implemented from first principles: Bresenham's algorithm for lines, midpoint algorithm for ellipses, scanline flood fill with a visited bitmap, and square brush stamping. Mirror mode applies symmetry at the algorithm level, duplicating brush strokes across the vertical axis in real time. Shape tools (line, rect, ellipse) show a live preview overlay while dragging before committing to the canvas.
+
+### Sprite sheet export
+
+In animation mode, the editor can export all frames as a horizontal sprite sheet PNG — a single image with frames laid side by side, ready for use in game engines. Available at 1x and 4x scale.
+
+### Self-migrating persistence
+
+The IndexedDB storage layer automatically detects and migrates data from older schema versions. v1 (flat 2D color arrays) and v2 (per-layer color arrays) are transparently upgraded to v3 (binary `PixelBitmap` format) on load, then re-saved in the new format. Projects are never lost across editor updates.
+
 ## Getting Started
 
 ```bash
@@ -38,6 +68,19 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - [TypeScript](https://www.typescriptlang.org/)
 - [Radix UI](https://www.radix-ui.com/) (tooltips only)
 - Inline CSS-in-JS (no CSS framework dependency for the editor)
+
+## Bitmap Architecture
+
+The editor uses a custom `PixelBitmap` class backed by a `Uint32Array` for pixel storage instead of traditional 2D arrays of color strings. Each pixel is a single 32-bit integer in `0xAABBGGRR` format (little-endian ABGR), where `0` represents a fully transparent pixel.
+
+**Why this matters:**
+
+- **Memory efficiency** — A 256x256 canvas uses ~256 KB as a flat `Uint32Array`, compared to ~1.5 MB+ with a 2D array of hex strings and object overhead
+- **Performance** — Iterating a typed array is significantly faster than nested arrays of heap-allocated strings. Layer flattening, flood fill, and export operations work directly on contiguous memory
+- **Zero-copy ImageData** — The `Uint32Array` buffer is reinterpreted as `Uint8ClampedArray` for direct use with `canvas.putImageData()`, avoiding per-pixel color parsing
+- **Compact serialization** — Bitmaps serialize to base64-encoded binary for IndexedDB storage, much smaller than JSON arrays of color strings
+
+Helper functions (`hexToU32`, `u32ToHex`, `blendU32`) handle conversion between `#rrggbb` hex strings and the internal format. The storage layer includes automatic migration from older schema versions (v1: 2D string arrays, v2: per-layer string arrays) to the current v3 bitmap format.
 
 ## Project Structure
 
